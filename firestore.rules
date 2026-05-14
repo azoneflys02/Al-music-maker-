@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Tracks Collection ---
+    match /tracks/{trackId} {
+      function isValidTrack(data) {
+        return data.userId == request.auth.uid &&
+               data.title is string && data.title.size() <= 200 &&
+               data.description is string && data.description.size() <= 2000 &&
+               data.mood is string && data.mood.size() <= 100 &&
+               data.instruments is list && data.instruments.size() <= 20 &&
+               data.bpm is number && data.bpm >= 40 && data.bpm <= 220 &&
+               data.melody is list && data.bassline is list && data.chords is list &&
+               (data.drums == null || data.drums is list) &&
+               (data.structure == null || data.structure is list) &&
+               data.createdAt is number;
+      }
+
+      // Read access
+      allow get: if isValidId(trackId) && isOwner(existing().userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Write access
+      allow create: if isValidId(trackId) && isSignedIn() && isValidTrack(incoming());
+      
+      allow update: if isValidId(trackId) && 
+                       isOwner(existing().userId) && 
+                       isValidTrack(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action: Edit Metadata
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'lyrics']))
+                       );
+      
+      allow delete: if isValidId(trackId) && isOwner(existing().userId);
+    }
+  }
+}

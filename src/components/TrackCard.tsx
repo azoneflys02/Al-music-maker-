@@ -1,43 +1,33 @@
 import React, { useState } from 'react';
 import { GeneratedTrack } from '../types';
-import { Play, Pause, Trash2, Clock, Music2, Download, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Play, Pause, Trash2, Clock, Music2, Type, Cloud, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { audioEngine } from '../lib/audioEngine';
 
 interface TrackCardProps {
   track: GeneratedTrack;
   isPlaying: boolean;
+  isDeleting?: boolean;
   onPlay: (track: GeneratedTrack) => void;
   onStop: () => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, e: React.MouseEvent) => void;
+  onSave?: () => void;
 }
 
-export const TrackCard: React.FC<TrackCardProps> = ({ track, isPlaying, onPlay, onStop, onDelete }) => {
-  const [isExporting, setIsExporting] = useState(false);
+export const TrackCard: React.FC<TrackCardProps> = ({ track, isPlaying, isDeleting, onPlay, onStop, onDelete, onSave }) => {
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [volume, setVolume] = useState(0.8);
 
-  const handleDownload = async (format: 'wav' | 'mp3') => {
-    setIsExporting(true);
-    try {
-      // 1. Render to buffer
-      const buffer = await audioEngine.renderTrack(track);
-      // 2. Convert to blob based on format
-      const blob = format === 'mp3' 
-        ? audioEngine.bufferToMp3(buffer) 
-        : audioEngine.bufferToWav(buffer);
-      // 3. Trigger download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${track.title.replace(/\s+/g, '_')}_AuraSynth.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Export failed", error);
-    } finally {
-      setIsExporting(false);
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
+    if (isPlaying) {
+      audioEngine.setVolume(newVol);
     }
+  };
+
+  const handlePlay = () => {
+    audioEngine.setVolume(volume);
+    onPlay(track);
   };
 
   return (
@@ -62,7 +52,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, isPlaying, onPlay, 
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-xl border transition-colors ${
-              isPlaying ? 'bg-purple-500 text-white border-purple-400' : 'bg-white/5 text-white/40 border-white/10'
+              isPlaying ? 'bg-purple-500 text-white border-purple-400' : 'bg-white/5 text-yellow-500/50 border-white/10'
             }`}>
               <Music2 className="w-5 h-5" />
             </div>
@@ -76,46 +66,119 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, isPlaying, onPlay, 
           </div>
           
           <div className="flex items-center gap-1">
+            {onSave && (
+              <button 
+                onClick={onSave}
+                className="p-2 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-lg transition-all animate-pulse"
+                title="Save to Gallery"
+              >
+                <Cloud className="w-4 h-4" />
+              </button>
+            )}
+            {track.lyrics && (
+              <button 
+                onClick={() => setShowLyrics(!showLyrics)}
+                title="View Lyrics"
+                className={`p-2 rounded-lg transition-all ${
+                  showLyrics ? 'bg-purple-500 text-white shadow-lg shadow-purple-900/40' : 'text-yellow-500/30 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Type className="w-4 h-4" />
+              </button>
+            )}
             <button 
-              disabled={isExporting}
-              onClick={() => handleDownload('mp3')}
-              title="Download as MP3"
-              className="p-2 text-white/20 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-50 flex items-center gap-1"
+              disabled={isDeleting}
+              onClick={(e) => onDelete(track.id, e)}
+              className="p-2 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/20 rounded-lg transition-all active:scale-90 disabled:opacity-50"
+              title="Delete Track"
             >
-              {isExporting ? <Loader2 className="w-3 h-3 animate-spin text-purple-400" /> : <Download className="w-3 h-3" />}
-              <span className="text-[10px] font-mono">MP3</span>
-            </button>
-            <button 
-              disabled={isExporting}
-              onClick={() => handleDownload('wav')}
-              title="Download as WAV"
-              className="p-2 text-white/20 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-50 flex items-center gap-1"
-            >
-              <span className="text-[10px] font-mono">WAV</span>
-            </button>
-            <button 
-              onClick={() => onDelete(track.id)}
-              className="p-2 text-white/20 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
-            >
-              <Trash2 className="w-4 h-4" />
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        <p className="text-white/60 text-sm mb-6 line-clamp-2 grow font-light">{track.description}</p>
+        <AnimatePresence mode="wait">
+          {showLyrics ? (
+            <motion.div
+              key="lyrics"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 overflow-hidden"
+            >
+              <div className="bg-black/30 rounded-2xl p-4 border border-white/5 max-h-48 overflow-y-auto custom-scrollbar">
+                <p className="text-white/80 text-xs leading-relaxed whitespace-pre-wrap italic font-serif">
+                  {track.lyrics}
+                </p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.p 
+              key="desc"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-yellow-100/70 text-sm mb-6 line-clamp-2 grow font-light"
+            >
+              {track.description}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        {track.structure && track.structure.length > 0 && (
+          <div className="mb-6">
+            <div className="flex gap-1 overflow-x-auto pb-2 custom-scrollbar">
+              {track.structure.map((section, idx) => (
+                <div 
+                  key={`${section.id}-${idx}`}
+                  className="flex-shrink-0"
+                  style={{ width: `${Math.max(40, section.durationBars * 10)}px` }}
+                >
+                  <div className={`h-6 rounded-md border flex items-center justify-center text-[8px] font-bold uppercase tracking-tighter transition-all ${
+                    section.type === 'Intro' ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' :
+                    section.type === 'Verse' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400' :
+                    section.type === 'Chorus' ? 'border-purple-500/50 bg-purple-500/10 text-purple-400' :
+                    section.type === 'Bridge' ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' :
+                    'border-rose-500/50 bg-rose-500/10 text-rose-400'
+                  }`}>
+                    {section.type.slice(0, 3)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
-          <div className="flex items-center gap-4 text-xs font-mono text-white/40">
+          <div className="flex items-center gap-4 text-xs font-mono text-yellow-200/60">
             <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              <Clock className="w-3 h-3 text-yellow-500/50" />
               <span>{Math.round(track.bpm)} BPM</span>
             </div>
+            {track.targetDuration && (
+              <span>{Math.floor(track.targetDuration / 60)}:{(track.targetDuration % 60).toString().padStart(2, '0')}</span>
+            )}
             <span>{new Date(track.createdAt).toLocaleDateString()}</span>
           </div>
 
-          <button
-            onClick={() => isPlaying ? onStop() : onPlay(track)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 transform ${
+          <div className="flex items-center gap-6 grow-0 shrink-0">
+            {isPlaying && (
+              <div className="flex items-center gap-3 bg-black/20 rounded-full px-4 py-2 border border-white/5">
+                <Music2 className="w-3 h-3 text-yellow-500/50" />
+                <input 
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  className="w-20 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white hover:accent-purple-400"
+                />
+              </div>
+            )}
+            <button
+              onClick={() => isPlaying ? onStop() : handlePlay()}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 transform ${
               isPlaying 
                 ? 'bg-white text-black scale-110 shadow-lg' 
                 : 'bg-indigo-600 text-white hover:scale-105 hover:bg-indigo-500'
@@ -125,6 +188,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, isPlaying, onPlay, 
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
+  </motion.div>
   );
 };

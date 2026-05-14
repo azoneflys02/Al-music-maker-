@@ -1,5 +1,13 @@
-export type Genre = 'Ambient' | 'Cybperpunk' | 'Classical' | 'Lo-fi' | 'Synthwave' | 'Cinematic';
-export type Mood = 'Calm' | 'Energetic' | 'Dark' | 'Whimsical' | 'Nostalgic' | 'Tense';
+export type Genre = 'Ambient' | 'Cyberpunk' | 'Classical' | 'Lo-fi' | 'Synthwave' | 'Cinematic' | 'Disco' | 'Jazz' | 'Rock' | 'Electronic';
+export type Mood = 'Calm' | 'Energetic' | 'Dark' | 'Whimsical' | 'Nostalgic' | 'Tense' | 'Aggressive' | 'Ethereal' | 'Melancholic' | 'Heroic' | 'Suspenseful' | 'Hopeful' | 'Chaotic' | 'Minimal';
+
+export type SectionType = 'Intro' | 'Verse' | 'Chorus' | 'Bridge' | 'Outro';
+
+export interface SongSection {
+  id: string;
+  type: SectionType;
+  durationBars: number;
+}
 
 export interface Note {
   pitch: string; // e.g., 'C4', 'E4'
@@ -19,5 +27,9 @@ export interface GeneratedTrack {
   melody: Note[];
   bassline: Note[];
   chords: Note[];
+  drums?: Note[];
+  structure?: SongSection[];
   createdAt: number;
+  targetDuration?: number;
+  lyrics?: string;
 }
