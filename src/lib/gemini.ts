@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Note, Genre, Mood, SongSection, GeneratedTrack } from "../types";
+import { Note, Genre, Mood, SongSection, GeneratedTrack, TrainingExample } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -20,8 +20,17 @@ export async function generateMusic(
   reference?: GenerationReference,
   structure?: SongSection[],
   theme?: string,
-  includeLyrics: boolean = true
+  includeLyrics: boolean = true,
+  trainingExamples: TrainingExample[] = []
 ): Promise<Partial<GeneratedTrack>> {
+  const trainingText = trainingExamples.length > 0 
+    ? `
+    AI TRAINING EXAMPLES:
+    I have provided ${trainingExamples.length} audio/MIDI files as training examples.
+    Analyze the style, instrumentation, and rhythmic patterns from these files.
+    Your output should be a synthesis of the requested genre/mood AND the specific aesthetic found in these examples.
+    ` : "";
+
   const referenceText = reference ? `
     REFERENCE MATERIAL:
     The user has provided a base MIDI structure. 
@@ -56,6 +65,7 @@ export async function generateMusic(
     Chords Instrument: ${preferredInstruments?.chords || "Any"}
     Drum Kit Style: ${preferredInstruments?.drums || "Any"}
     Additional Request: ${customPrompt || "None"}
+    ${trainingText}
     ${referenceText}
     ${structureText}
 
@@ -84,9 +94,19 @@ export async function generateMusic(
   `;
 
   try {
+    const parts = [
+      { text: prompt },
+      ...trainingExamples.filter(ex => ex.data).map(ex => ({
+        inlineData: {
+          mimeType: ex.fileType,
+          data: ex.data!
+        }
+      }))
+    ];
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: parts,
       config: {
         responseMimeType: "application/json"
       }

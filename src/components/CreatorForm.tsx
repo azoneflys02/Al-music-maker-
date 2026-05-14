@@ -1,9 +1,32 @@
 import React, { useState } from 'react';
-import { Genre, Mood, Note, SongSection } from '../types';
-import { Wand2, Loader2, Music4 } from 'lucide-react';
+import { Genre, Mood, Note, SongSection, TrainingExample } from '../types';
+import { 
+  Wand2, Loader2, Music4, BrainCircuit, 
+  Wind, Zap, BookOpen, Coffee, Sun, Film, Sparkles, Music, Guitar, Cpu, 
+  Star, Mic2, Flame, Activity, Home, Users, Leaf, CloudRain, Ghost, Waves, Target, Edit3,
+  Heart, Smile, Frown, Moon, Scissors, Shield, Compass, Rocket, Anchor, Cloud, AlertCircle, HelpCircle
+} from 'lucide-react';
+
+const GENRE_ICONS: Record<string, any> = {
+  'Ambient': Wind, 'Cyberpunk': Zap, 'Classical': BookOpen, 'Lo-fi': Coffee, 'Synthwave': Sun,
+  'Cinematic': Film, 'Disco': Sparkles, 'Jazz': Music, 'Rock': Guitar, 'Electronic': Cpu,
+  'Pop': Star, 'Hip Hop': Mic2, 'Metal': Flame, 'Techno': Activity, 'House': Home,
+  'Orchestral': Users, 'Folk': Leaf, 'Blues': CloudRain, 'Funk': Ghost, 'Reggae': Waves,
+  'Trap': Target, 'Custom': Edit3
+};
+
+const MOOD_ICONS: Record<string, any> = {
+  'Calm': Cloud, 'Energetic': Zap, 'Dark': Moon, 'Whimsical': Sparkles, 'Nostalgic': Anchor,
+  'Tense': AlertCircle, 'Aggressive': Flame, 'Ethereal': Wind, 'Melancholic': CloudRain,
+  'Heroic': Shield, 'Suspenseful': Scissors, 'Hopeful': Smile, 'Chaotic': Activity,
+  'Minimal': Scissors, 'Spacey': Rocket, 'Gritty': Target, 'Dreamy': Moon,
+  'Romantic': Heart, 'Epic': Compass, 'Chill': Coffee, 'Intense': Zap,
+  'Playful': Ghost, 'Sorrowful': Frown, 'Triumphant': Star, 'Custom': HelpCircle
+};
 import { motion } from 'motion/react';
 import { MidiImport } from './MidiImport';
 import { StructureEditor } from './StructureEditor';
+import { TrainingGallery } from './TrainingGallery';
 
 interface CreatorFormProps {
   onGenerate: (
@@ -16,25 +39,44 @@ interface CreatorFormProps {
     midiRef?: { melody: Note[], bassline: Note[], chords: Note[], drums: Note[] }, 
     structure?: SongSection[],
     theme?: string,
-    includeLyrics?: boolean
+    includeLyrics?: boolean,
+    trainingExamples?: TrainingExample[]
   ) => Promise<void>;
   isGenerating: boolean;
 }
 
-const GENRES: Genre[] = ['Ambient', 'Cyberpunk', 'Classical', 'Lo-fi', 'Synthwave', 'Cinematic', 'Disco', 'Jazz', 'Rock', 'Electronic'];
+const GENRES: Genre[] = [
+  'Ambient', 'Cyberpunk', 'Classical', 'Lo-fi', 'Synthwave', 
+  'Cinematic', 'Disco', 'Jazz', 'Rock', 'Electronic',
+  'Pop', 'Hip Hop', 'Metal', 'Techno', 'House', 'Orchestral', 
+  'Folk', 'Blues', 'Funk', 'Reggae', 'Trap', 'Custom'
+];
+
 const MOODS: Mood[] = [
   'Calm', 'Energetic', 'Dark', 'Whimsical', 'Nostalgic', 'Tense', 
   'Aggressive', 'Ethereal', 'Melancholic', 'Heroic', 'Suspenseful', 
-  'Hopeful', 'Chaotic', 'Minimal'
+  'Hopeful', 'Chaotic', 'Minimal', 'Spacey', 'Gritty', 'Dreamy', 
+  'Romantic', 'Epic', 'Chill', 'Intense', 'Playful', 'Sorrowful', 
+  'Triumphant', 'Custom'
 ];
 const MELODY_INSTRUMENTS = ['Sine Lead', 'Moog Lead', 'Sawtooth', 'Square Wave', 'Chiptune', 'Pluck', 'Nylon Pluck', 'Flute', 'Soft Sax', 'Bell', 'Rhodes', 'Trumpet', 'Distortion Guitar', 'Grand Piano', 'Violin Solist'];
 const BASS_INSTRUMENTS = ['Deep Sub', 'Reese Bass', 'Acid Bass', 'Electric Bass', 'Analog Growl', 'Submarine', 'Slap Bass', 'Walking Bass', 'Fretless Bass', '808 Boom', '8-bit Bass', 'Synth Piz'];
 const CHORD_INSTRUMENTS = ['Atmospheric Pad', 'Ethereal Pad', 'Rhodes Chords', 'Soft Piano', 'Digital Organ', 'Wurlitzer', 'Strings', 'Grand Strings', 'Warm Brass', 'Jazz Guitar', 'Bossa Nova Guitar', 'Rock Organ', 'Nylon Guitar'];
 const DRUM_KITS = ['Modern 808', 'Acoustic Studio', 'Lo-fi Hip Hop', 'Classic 909', 'Cinematic Percussion', 'Jazz Drums', 'Retro Rock'];
 
+const DURATION_PRESETS = [
+  { label: '30s', value: 30 },
+  { label: '60s', value: 60 },
+  { label: '2m', value: 120 },
+  { label: '3m', value: 180 },
+  { label: '5m', value: 300 },
+];
+
 export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerating }) => {
   const [genre, setGenre] = useState<Genre>('Ambient');
+  const [customGenre, setCustomGenre] = useState('');
   const [mood, setMood] = useState<Mood>('Calm');
+  const [customMood, setCustomMood] = useState('');
   const [prompt, setPrompt] = useState('');
   const [theme, setTheme] = useState('');
   const [includeLyrics, setIncludeLyrics] = useState(true);
@@ -46,13 +88,14 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
   const [chordInst, setChordInst] = useState(CHORD_INSTRUMENTS[0]);
   const [drumKit, setDrumKit] = useState(DRUM_KITS[0]);
   const [sections, setSections] = useState<SongSection[]>([]);
+  const [trainingExamples, setTrainingExamples] = useState<TrainingExample[]>([]);
 
   const [midiData, setMidiData] = useState<{ melody: Note[], bassline: Note[], chords: Note[], drums: Note[], bpm: number, fileName: string } | null>(null);
 
   const handleGenerate = () => {
     onGenerate(
-      genre, 
-      mood, 
+      genre === 'Custom' ? (customGenre || 'Experimental') as any : genre, 
+      mood === 'Custom' ? (customMood || 'Unique') as any : mood, 
       prompt, 
       { melody: melodyInst, bass: bassInst, chords: chordInst, drums: drumKit }, 
       duration, 
@@ -60,7 +103,8 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
       midiData ? midiData : undefined, 
       sections.length > 0 ? sections : undefined,
       theme,
-      includeLyrics
+      includeLyrics,
+      trainingExamples
     );
   };
 
@@ -78,42 +122,72 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <label className="text-xs font-mono text-yellow-200/60 uppercase tracking-widest mb-4 block">Select Genre</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {GENRES.map((g) => (
-                <button
-                  key={g}
-                  disabled={isGenerating}
-                  onClick={() => setGenre(g)}
-                  className={`py-2 px-3 rounded-xl text-xs font-medium transition-all duration-300 ${
-                    genre === g 
-                      ? 'bg-purple-600 text-white border-purple-500 shadow-lg shadow-purple-900/40' 
-                      : 'bg-white/5 text-yellow-200/80 border border-white/5 hover:border-white/20'
-                  }`}
-                >
-                  {g}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+              {GENRES.map((g) => {
+                const Icon = GENRE_ICONS[g] || HelpCircle;
+                return (
+                  <button
+                    key={g}
+                    disabled={isGenerating}
+                    onClick={() => setGenre(g)}
+                    className={`py-2 px-3 rounded-xl text-[9px] font-bold transition-all duration-300 border uppercase tracking-wider flex items-center gap-2 ${
+                      genre === g 
+                        ? 'bg-purple-600 text-white border-purple-400 shadow-lg shadow-purple-900/40' 
+                        : 'bg-white/5 text-yellow-200/50 border-white/5 hover:border-white/20 hover:text-yellow-200'
+                    }`}
+                  >
+                    <Icon className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{g}</span>
+                  </button>
+                );
+              })}
             </div>
+            {genre === 'Custom' && (
+              <motion.input
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                type="text"
+                placeholder="Type your genre..."
+                className="w-full mt-3 bg-black/40 border border-purple-500/30 rounded-xl py-2 px-4 text-xs text-white focus:outline-none focus:border-purple-500"
+                value={customGenre}
+                onChange={(e) => setCustomGenre(e.target.value)}
+              />
+            )}
           </div>
 
           <div>
             <label className="text-xs font-mono text-yellow-200/60 uppercase tracking-widest mb-4 block">Select Mood</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {MOODS.map((m) => (
-                <button
-                  key={m}
-                  disabled={isGenerating}
-                  onClick={() => setMood(m)}
-                  className={`py-2 px-3 rounded-xl text-xs font-medium transition-all duration-300 ${
-                    mood === m 
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-900/40' 
-                      : 'bg-white/5 text-yellow-200/80 border border-white/5 hover:border-white/20'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+              {MOODS.map((m) => {
+                const Icon = MOOD_ICONS[m] || HelpCircle;
+                return (
+                  <button
+                    key={m}
+                    disabled={isGenerating}
+                    onClick={() => setMood(m)}
+                    className={`py-2 px-3 rounded-xl text-[9px] font-bold transition-all duration-300 border uppercase tracking-wider flex items-center gap-2 ${
+                      mood === m 
+                        ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-900/40' 
+                        : 'bg-white/5 text-yellow-200/50 border-white/5 hover:border-white/20 hover:text-yellow-200'
+                    }`}
+                  >
+                    <Icon className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{m}</span>
+                  </button>
+                );
+              })}
             </div>
+            {mood === 'Custom' && (
+              <motion.input
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                type="text"
+                placeholder="Type your mood..."
+                className="w-full mt-3 bg-black/40 border border-indigo-500/30 rounded-xl py-2 px-4 text-xs text-white focus:outline-none focus:border-indigo-500"
+                value={customMood}
+                onChange={(e) => setCustomMood(e.target.value)}
+              />
+            )}
           </div>
         </div>
 
@@ -124,15 +198,37 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
                 <span>Song Duration</span>
                 <span className="text-yellow-400 font-bold">{formatDuration(duration)}</span>
               </label>
+              
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1 custom-scrollbar">
+                {DURATION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    disabled={isGenerating}
+                    onClick={() => setDuration(preset.value)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                      duration === preset.value 
+                        ? 'bg-yellow-500 text-black border-yellow-400' 
+                        : 'bg-white/5 text-yellow-200/40 border border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
               <input 
                 type="range"
                 min="30"
                 max="300"
-                step="30"
+                step="5"
                 value={duration}
                 onChange={(e) => setDuration(parseInt(e.target.value))}
                 className="w-full h-2 bg-white/5 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400"
               />
+              <div className="flex justify-between mt-2">
+                <span className="text-[10px] font-mono text-white/20">30s</span>
+                <span className="text-[10px] font-mono text-white/20">5m</span>
+              </div>
             </div>
 
             <div>
@@ -222,6 +318,18 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
 
           <div className="pt-4 border-t border-white/5">
             <label className="text-xs font-mono text-yellow-200/60 uppercase tracking-widest mb-4 block flex items-center gap-2">
+              <BrainCircuit className="w-3 h-3 text-purple-500" />
+              AI Training Examples
+            </label>
+            <TrainingGallery 
+              examples={trainingExamples}
+              onAdd={(ex) => setTrainingExamples(prev => [...prev, ex])}
+              onRemove={(id) => setTrainingExamples(prev => prev.filter(e => e.id !== id))}
+            />
+          </div>
+
+          <div className="pt-4 border-t border-white/5">
+            <label className="text-xs font-mono text-yellow-200/60 uppercase tracking-widest mb-4 block flex items-center gap-2">
               <Music4 className="w-3 h-3 text-yellow-500" />
               MIDI Reference (Optional)
             </label>
@@ -233,7 +341,6 @@ export const CreatorForm: React.FC<CreatorFormProps> = ({ onGenerate, isGenerati
               currentFile={midiData?.fileName}
             />
           </div>
-
           <div className="pt-8 border-t border-white/5">
             <StructureEditor 
               sections={sections}

@@ -3,7 +3,7 @@ import { Header } from './components/Header';
 import { CreatorForm } from './components/CreatorForm';
 import { TrackCard } from './components/TrackCard';
 import { Visualizer } from './components/Visualizer';
-import { Genre, Mood, Note, SongSection, GeneratedTrack } from './types';
+import { Genre, Mood, Note, SongSection, GeneratedTrack, TrainingExample } from './types';
 import { generateMusic } from './lib/gemini';
 import { audioEngine } from './lib/audioEngine';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,7 +48,8 @@ export default function App() {
     midiRef?: { melody: Note[], bassline: Note[], chords: Note[], drums: Note[] },
     structure?: SongSection[],
     theme?: string,
-    includeLyrics: boolean = true
+    includeLyrics: boolean = true,
+    trainingExamples?: TrainingExample[]
   ) => {
     if (!user) {
       setError("Please sign in to generate and save tracks.");
@@ -68,7 +69,8 @@ export default function App() {
         midiRef, 
         structure,
         theme,
-        includeLyrics
+        includeLyrics,
+        trainingExamples
       );
       
       const trackData: Omit<GeneratedTrack, 'id'> = {

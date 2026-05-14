@@ -7,13 +7,13 @@ import { Midi } from '@tonejs/midi';
 export type AudioQuality = 'Low' | 'Medium' | 'High';
 
 class AudioEngine {
-  private melodySynth: any;
-  private bassSynth: any;
-  private chordSynth: any;
-  private kickSynth: any;
-  private snareSynth: any;
-  private hihatSynth: any;
-  private reverb: Tone.Reverb;
+  private melodySynth: Tone.PolySynth<Tone.Synth>;
+  private bassSynth: Tone.PolySynth<Tone.Synth>;
+  private chordSynth: Tone.PolySynth<Tone.Synth>;
+  private kickSynth: Tone.PolySynth<Tone.MembraneSynth>;
+  private snareSynth: Tone.NoiseSynth;
+  private hihatSynth: Tone.PolySynth<Tone.MetalSynth>;
+  private reverb: Tone.JCReverb;
   private delay: Tone.FeedbackDelay;
   private isInitialized = false;
   private analyser: Tone.Analyser;
@@ -21,30 +21,72 @@ class AudioEngine {
   private tremolo: Tone.Tremolo;
   private distortion: Tone.Distortion;
   private quality: AudioQuality = 'Medium';
+  private masterLimiter: Tone.Limiter;
+  private masterCompressor: Tone.Compressor;
+  private masterEQ: Tone.EQ3;
 
   constructor() {
     this.analyser = new Tone.Analyser("fft", 1024);
-    this.reverb = new Tone.Reverb(2).connect(this.analyser);
+    
+    // Master Chain: EQ -> Compressor -> Limiter -> Analyser -> Destination
+    this.masterLimiter = new Tone.Limiter(-1).connect(this.analyser);
+    this.masterCompressor = new Tone.Compressor({
+      threshold: -24,
+      ratio: 4,
+      attack: 0.003,
+      release: 0.25
+    }).connect(this.masterLimiter);
+    this.masterEQ = new Tone.EQ3({
+      low: 0,
+      mid: -2,
+      high: 2,
+      lowFrequency: 400,
+      highFrequency: 2500
+    }).connect(this.masterCompressor);
+
+    // Using JCReverb as it's simpler and doesn't require async generation like standard Reverb
+    this.reverb = new Tone.JCReverb(0.5).connect(this.masterEQ);
     this.analyser.toDestination();
     
-    this.delay = new Tone.FeedbackDelay("8n", 0.5).connect(this.reverb);
+    this.delay = new Tone.FeedbackDelay("8n", 0.4).connect(this.reverb);
     
     this.phaser = new Tone.Phaser({ frequency: 15, octaves: 5, baseFrequency: 1000 }).connect(this.reverb);
     this.tremolo = new Tone.Tremolo(9, 0.75).connect(this.reverb).start();
     this.distortion = new Tone.Distortion(0.4).connect(this.reverb);
 
+    // Initial synth setup with balanced volumes
     this.melodySynth = new Tone.PolySynth(Tone.Synth).connect(this.delay);
-    this.chordSynth = new Tone.PolySynth(Tone.Synth).connect(this.reverb);
-    this.bassSynth = new Tone.PolySynth(Tone.MonoSynth as any).connect(this.reverb);
+    this.melodySynth.volume.value = -6;
 
-    // Drum Synths - using PolySynth wrapper to avoid "Start time must be strictly greater than previous" errors
-    // when multiple hits occur at the exact same time
-    this.kickSynth = new Tone.PolySynth(Tone.MembraneSynth).connect(this.reverb);
+    this.chordSynth = new Tone.PolySynth(Tone.Synth).connect(this.reverb);
+    this.chordSynth.volume.value = -12;
+
+    this.bassSynth = new Tone.PolySynth(Tone.Synth).connect(this.reverb);
+    this.bassSynth.volume.value = -6;
+
+    // Drum Synths - Optimized for clarity
+    this.kickSynth = new Tone.PolySynth(Tone.MembraneSynth, {
+      octaves: 10,
+      pitchDecay: 0.05,
+      envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4 }
+    }).connect(this.masterEQ); 
+    this.kickSynth.volume.value = -2;
+
     this.snareSynth = new Tone.NoiseSynth({
-      volume: -10,
+      volume: -8,
       envelope: { attack: 0.001, decay: 0.2, sustain: 0 }
-    }).connect(this.reverb);
+    }).connect(this.masterEQ);
+    
     this.hihatSynth = new Tone.PolySynth(Tone.MetalSynth).connect(this.reverb);
+    (this.hihatSynth as any).set({
+      frequency: 200,
+      envelope: { attack: 0.001, decay: 0.1, release: 0.1 },
+      harmonicity: 5.1,
+      modulationIndex: 32,
+      resonance: 4000,
+      octaves: 1.5
+    });
+    this.hihatSynth.volume.value = -18;
   }
 
   private configureInstruments(instruments: string[]) {
@@ -52,38 +94,51 @@ class AudioEngine {
     const melody = instruments[0]?.toLowerCase() || '';
     if (melody.includes('piano') || melody.includes('rhodes') || melody.includes('wurlitzer')) {
       this.melodySynth.set({ envelope: { attack: 0.01, decay: 1, sustain: 0.3, release: 1 }, oscillator: { type: 'sine' as any } });
+      this.melodySynth.volume.value = -4;
     } else if (melody.includes('trumpet') || melody.includes('brass') || melody.includes('sax')) {
       this.melodySynth.set({ envelope: { attack: 0.1, decay: 0.2, sustain: 0.8, release: 0.1 }, oscillator: { type: 'sawtooth' as any } });
+      this.melodySynth.volume.value = -8;
     } else if (melody.includes('guitar') || melody.includes('pluck')) {
       this.melodySynth.set({ envelope: { attack: 0.02, decay: 0.5, sustain: 0.1, release: 0.5 }, oscillator: { type: 'triangle' as any } });
+      this.melodySynth.volume.value = -6;
     } else if (melody.includes('violin') || melody.includes('strings') || melody.includes('pad')) {
       this.melodySynth.set({ envelope: { attack: 0.4, decay: 1, sustain: 0.8, release: 1 }, oscillator: { type: 'sawtooth' as any } });
+      this.melodySynth.volume.value = -10;
     } else if (melody.includes('square') || melody.includes('chip') || melody.includes('8-bit')) {
       this.melodySynth.set({ envelope: { attack: 0.01, decay: 0.1, sustain: 0.4, release: 0.1 }, oscillator: { type: 'square' as any } });
+      this.melodySynth.volume.value = -6;
     } else if (melody.includes('moog') || melody.includes('lead')) {
       this.melodySynth.set({ envelope: { attack: 0.05, decay: 0.5, sustain: 0.7, release: 0.2 }, oscillator: { type: 'sawtooth' as any } });
+      this.melodySynth.volume.value = -6;
     }
 
     // Model Bass Synth
     const bass = instruments[1]?.toLowerCase() || '';
     if (bass.includes('sub') || bass.includes('808') || bass.includes('boom')) {
       this.bassSynth.set({ oscillator: { type: 'sine' }, envelope: { attack: 0.1, release: 1.5 } });
+      this.bassSynth.volume.value = -2;
     } else if (bass.includes('acid') || bass.includes('growl') || bass.includes('reese')) {
       this.bassSynth.set({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.05, release: 0.5 } });
+      this.bassSynth.volume.value = -6;
     } else if (bass.includes('electric') || bass.includes('slap') || bass.includes('walking') || bass.includes('fretless')) {
       this.bassSynth.set({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.8 } });
+      this.bassSynth.volume.value = -4;
     }
 
     // Model Chord Synth
     const chord = instruments[2]?.toLowerCase() || '';
     if (chord.includes('piano') || chord.includes('rhodes') || chord.includes('wurlitzer')) {
       this.chordSynth.set({ envelope: { attack: 0.01, decay: 2, sustain: 0.2, release: 1.5 }, oscillator: { type: 'sine' as any } });
+      this.chordSynth.volume.value = -12;
     } else if (chord.includes('guitar')) {
       this.chordSynth.set({ envelope: { attack: 0.05, decay: 1, sustain: 0, release: 0.5 }, oscillator: { type: 'triangle' as any } });
+      this.chordSynth.volume.value = -14;
     } else if (chord.includes('organ')) {
       this.chordSynth.set({ envelope: { attack: 0.1, decay: 0.1, sustain: 1, release: 0.1 }, oscillator: { type: 'square' as any } });
+      this.chordSynth.volume.value = -16;
     } else if (chord.includes('pad') || chord.includes('strings')) {
       this.chordSynth.set({ envelope: { attack: 0.8, decay: 1, sustain: 0.8, release: 2 }, oscillator: { type: 'sine' as any } });
+      this.chordSynth.volume.value = -14;
     }
   }
 
@@ -96,19 +151,19 @@ class AudioEngine {
     switch (this.quality) {
       case 'Low':
         this.distortion.oversample = 'none';
-        this.reverb.decay = 1.5;
+        this.reverb.roomSize.value = 0.4;
         this.melodySynth.set({ oscillator: { type: 'triangle' } });
         this.chordSynth.set({ oscillator: { type: 'sine' } });
         break;
       case 'Medium':
         this.distortion.oversample = '2x';
-        this.reverb.decay = 2.5;
+        this.reverb.roomSize.value = 0.6;
         this.melodySynth.set({ oscillator: { type: 'sawtooth' } });
         this.chordSynth.set({ oscillator: { type: 'triangle' } });
         break;
       case 'High':
         this.distortion.oversample = '4x';
-        this.reverb.decay = 4;
+        this.reverb.roomSize.value = 0.8;
         this.melodySynth.set({ oscillator: { type: 'fatsawtooth', count: 3, spread: 30 } });
         this.chordSynth.set({ oscillator: { type: 'fatsquare', count: 3, spread: 20 } });
         break;
@@ -116,15 +171,19 @@ class AudioEngine {
   }
 
   async init(sampleRate?: number) {
-    if (this.isInitialized) return;
     if (sampleRate && typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       Tone.setContext(new Tone.Context(new AudioCtx({ sampleRate })));
     }
+    
     await Tone.start();
+    if (Tone.context.state !== 'running') {
+      await Tone.context.resume();
+    }
+    
     this.isInitialized = true;
     this.applyQualitySettings();
-    console.log("Audio Context Started with Sample Rate:", Tone.getContext().sampleRate);
+    console.log("Audio Engine Initialized. State:", Tone.context.state, "Sample Rate:", Tone.context.sampleRate);
   }
 
   getAnalyser() {
@@ -177,7 +236,7 @@ class AudioEngine {
       this.melodySynth.connect(this.distortion);
     }
 
-    const playNotes = (notes: Note[], synth: any) => {
+    const playNotes = (notes: Note[], synth: Tone.PolySynth<any>) => {
       new Tone.Part((time, note) => {
         synth.triggerAttackRelease(note.pitch, note.duration, time, note.velocity);
       }, notes.map(n => ({ time: n.time, pitch: n.pitch, duration: n.duration, velocity: n.velocity }))).start(0);
@@ -236,40 +295,82 @@ class AudioEngine {
     const toneBuffer = await Tone.Offline(({ transport }) => {
       transport.bpm.value = track.bpm;
       
-      const offlineReverb = new Tone.Reverb(this.quality === 'High' ? 4 : (this.quality === 'Medium' ? 2.5 : 1.5)).toDestination();
+      // Master Chain for Offline Render
+      const offlineLimiter = new Tone.Limiter(-1).toDestination();
+      const offlineCompressor = new Tone.Compressor({
+        threshold: -24,
+        ratio: 4,
+        attack: 0.003,
+        release: 0.25
+      }).connect(offlineLimiter);
+      const offlineEQ = new Tone.EQ3({
+        low: 0,
+        mid: -2,
+        high: 2,
+        lowFrequency: 400,
+        highFrequency: 2500
+      }).connect(offlineCompressor);
+
+      const offlineReverb = new Tone.JCReverb(0.4).connect(offlineEQ);
       const offlineDelay = new Tone.FeedbackDelay("8n", 0.5).connect(offlineReverb);
       
       const oscTypeMelody = this.quality === 'High' ? 'fatsawtooth' : (this.quality === 'Medium' ? 'sawtooth' : 'triangle');
       const oscTypeChord = this.quality === 'High' ? 'fatsquare' : (this.quality === 'Medium' ? 'triangle' : 'sine');
 
       const offlineMelody = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: oscTypeMelody as any }
+        oscillator: { type: oscTypeMelody as any },
+        volume: -6
       }).connect(offlineDelay);
       
       const offlineChord = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: oscTypeChord as any }
+        oscillator: { type: oscTypeChord as any },
+        volume: -12
       }).connect(offlineReverb);
 
-      const offlineBass = new Tone.MonoSynth({
+      const offlineBass = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" },
-        envelope: { attack: 0.1, release: 1 }
+        envelope: { attack: 0.1, release: 1 },
+        volume: -6
       }).connect(offlineReverb);
 
       // Offline Drums
-      const offlineKick = new Tone.PolySynth(Tone.MembraneSynth).connect(offlineReverb);
-      const offlineSnare = new Tone.NoiseSynth({ volume: -10, envelope: { attack: 0.001, decay: 0.2, sustain: 0 } }).connect(offlineReverb);
+      const offlineKick = new Tone.PolySynth(Tone.MembraneSynth, {
+        octaves: 10,
+        pitchDecay: 0.05,
+        envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4 }
+      }).connect(offlineEQ);
+      offlineKick.volume.value = -2;
+
+      const offlineSnare = new Tone.NoiseSynth({ 
+        volume: -8, 
+        envelope: { attack: 0.001, decay: 0.2, sustain: 0 } 
+      }).connect(offlineEQ);
+
       const offlineHihat = new Tone.PolySynth(Tone.MetalSynth).connect(offlineReverb);
+      (offlineHihat as any).set({
+        frequency: 200,
+        envelope: { attack: 0.001, decay: 0.1, release: 0.1 },
+        harmonicity: 5.1,
+        modulationIndex: 32,
+        resonance: 4000,
+        octaves: 1.5
+      });
+      offlineHihat.volume.value = -18;
 
       // Model Offline Instruments
       const melody = track.instruments[0]?.toLowerCase() || '';
       if (melody.includes('piano') || melody.includes('rhodes') || melody.includes('wurlitzer')) {
         offlineMelody.set({ envelope: { attack: 0.01, decay: 1, sustain: 0.3, release: 1 } });
+        offlineMelody.volume.value = -4;
       } else if (melody.includes('trumpet') || melody.includes('brass') || melody.includes('sax')) {
         offlineMelody.set({ envelope: { attack: 0.1, decay: 0.2, sustain: 0.8, release: 0.1 } });
+        offlineMelody.volume.value = -8;
       } else if (melody.includes('guitar') || melody.includes('pluck')) {
         offlineMelody.set({ envelope: { attack: 0.02, decay: 0.5, sustain: 0.1, release: 0.5 } });
+        offlineMelody.volume.value = -6;
       } else if (melody.includes('violin') || melody.includes('strings') || melody.includes('pad')) {
         offlineMelody.set({ envelope: { attack: 0.4, decay: 1, sustain: 0.8, release: 1 } });
+        offlineMelody.volume.value = -10;
       }
 
       const bass = track.instruments[1]?.toLowerCase() || '';
@@ -286,7 +387,7 @@ class AudioEngine {
         offlineChord.set({ envelope: { attack: 0.8, decay: 1, sustain: 0.8, release: 2 } });
       }
 
-      const scheduleNotes = (notes: Note[], synth: any) => {
+      const scheduleNotes = (notes: Note[], synth: Tone.PolySynth<any>) => {
         notes.forEach(note => {
           synth.triggerAttackRelease(note.pitch, note.duration, note.time, note.velocity);
         });
